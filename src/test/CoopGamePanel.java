@@ -253,14 +253,28 @@ public class CoopGamePanel extends JPanel implements Runnable, KeyListener, Game
         gameRunning = false;
         panelState  = PanelState.GAME_OVER;
         if (gameTimer != null) gameTimer.stop();
-        if (network   != null) network.send(new GameMessage(GameMessage.Type.GAME_OVER, score));
+
+        // 💡 [수정됨] 클라이언트가 게임 오버 상태(gameOver=true)를 알 수 있도록 
+        // 서버 스레드가 종료되기 전에 마지막 맵 상태를 강제로 한 번 전송합니다.
+        if (isServer) {
+            sendGameState();
+        }
+
         int lines = (data != null) ? data.getLine() : 0;
         int finalScore = score;
+
+        // [수정된 부분] score 하나만 보내던 것을 [이유, 점수, 라인] 배열로 묶어서 전송합니다.
+        if (network != null) {
+            Object[] payload = new Object[] { reason, finalScore, lines };
+            network.send(new GameMessage(GameMessage.Type.GAME_OVER, payload));
+        }
+        
         SwingUtilities.invokeLater(() -> {
             repaint();
             showGameOverDialog(reason, finalScore, lines);
         });
     }
+    
 
     private void showGameOverDialog(String reason, int finalScore, int finalLines) {
         Object[] options = {"다시하기", "메인화면으로"};
@@ -276,7 +290,15 @@ public class CoopGamePanel extends JPanel implements Runnable, KeyListener, Game
             else             gameOverListener.onReturnToTitle();
         }
     }
-
+    public void showClientGameOver(String reason, int finalScore, int finalLines) {
+        if (panelState != PanelState.GAME_OVER) {
+            panelState = PanelState.GAME_OVER;
+        }
+        SwingUtilities.invokeLater(() -> {
+            repaint();
+            showGameOverDialog(reason, finalScore, finalLines);
+        });
+    }
     // ── 네트워크 동기화 ───────────────────────────────────────────
     private void sendGameState() {
         if (network == null || !network.isConnected()) return;
